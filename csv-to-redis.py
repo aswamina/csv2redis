@@ -1,10 +1,28 @@
+"""
+    CSV to Redis loader file
+    It takes an input CSV file and outputs the data into Redis.
+
+    Usage : csv-to-redis.py -i <input-csv-file> -o <output-file> -k <key-set> -f <key-fieldname>
+
+    The input-csv-file is self-explanatory
+
+    The output-file is used to log any errors or warnings that may occur. It is a good idea to read this
+    file and look for any duplicates that have been rejected by Redis
+
+    The key-set is the hash-key for the data. For example if the CSV file contains user data, then the key-set for the '
+    first row in the CSV could be userdata1 and userdata2 for the second row and so on
+
+    The <key-fieldname> identifies an unique set of keys for each of the rows in the CSV file. For example the userId
+    may be the unique key. It checks to see that there are no rows in the CSV file that have duplicate userId. If there
+    exist duplicates they are rejected and added to the output file
+"""
+
 import sys
 import getopt
 import redis
 import csv
 import logging
 
-ndups = 0
 headers = None
 logger = None
 HOST = "localhost"
@@ -21,6 +39,7 @@ def getLogger(logfile):
     logger.addHandler(hdlr)
     logger.setLevel(logging.WARNING)
 
+
 def _get_connection():
     """
     Create and return a Redis connection. Returns None on failure.
@@ -36,7 +55,7 @@ def _get_connection():
 
 
 def addRedisSetKey(conn, d, k):
-    # TODO : Check if key is unique in the set , if not you can do the hmset below, else skip
+    # Check if key is unique in the set , if not you can do the hmset below, else skip
     dup_keyfield = False
     try:
         dup_keyfield = conn.sadd(k, d[k])
@@ -46,6 +65,7 @@ def addRedisSetKey(conn, d, k):
         logger.error(e)
 
     return dup_keyfield
+
 
 def addRedisHashMap(pipe, keyset, key, value):
     try:
