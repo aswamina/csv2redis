@@ -47,9 +47,9 @@ def addRedisSetKey(conn, d, k):
 
     return dup_keyfield
 
-def addRedisHashMap(conn, keyset, key, value):
+def addRedisHashMap(pipe, keyset, key, value):
     try:
-        conn.hmset(keyset, {key: value})
+        pipe.hmset(keyset, {key: value})
     except redis.RedisError as e:
         logger.error(e)
 
@@ -77,11 +77,13 @@ def convert_file(inputfile, keyfield, keyset):
                     headers = values
                 else:
                     conn = _get_connection()
+                    pipe = conn.pipeline(False)
                     hashkeyset = ''.join([keyset, str(count - 1)])
                     valuesDict = to_dict(values)
                     if (addRedisSetKey(conn, valuesDict, keyfield) == True):
                         for key, value in valuesDict.items():
-                            addRedisHashMap(conn, hashkeyset, key, value)
+                            addRedisHashMap(pipe, hashkeyset, key, value)
+                    pipe.execute()
             f.close()
     except IOError as e:
         assert isinstance(e, object)
