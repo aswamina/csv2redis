@@ -67,7 +67,8 @@ def convert_file(inputfile, keyfield, keyset):
 
     try:
         with open(inputfile) as f:
-            reader = csv.reader(f, delimiter=',', quotechar='\')
+            csv.register_dialect('escaped', delimiter=",", escapechar="\\")
+            reader = csv.reader(f, skipinitialspace=True, dialect='escaped')
             for line in reader:
                 count = count + 1
                 values = line
