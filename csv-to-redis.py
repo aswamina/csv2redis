@@ -9,7 +9,7 @@
     The output-file is used to log any errors or warnings that may occur. It is a good idea to read this
     file and look for any duplicates that have been rejected by Redis
 
-    The key-set is the hash-key for the data. For example if the CSV file contains user data, then the key-set for the '
+    The key-set is the hash-key for the data. For example if the CSV file contains user data, then the key-set for the
     first row in the CSV could be userdata1 and userdata2 for the second row and so on
 
     The <key-fieldname> identifies an unique set of keys for each of the rows in the CSV file. For example the userId
@@ -30,7 +30,7 @@ PORT = 6379
 DB = 0
 
 
-def getLogger(logfile):
+def get_logger(logfile):
     global logger
     logger = logging.getLogger(__name__)
     hdlr = logging.FileHandler(logfile)
@@ -54,20 +54,20 @@ def _get_connection():
     return None
 
 
-def addRedisSetKey(conn, d, k):
+def add_redis_set_key(conn, k, v):
     # Check if key is unique in the set , if not you can do the hmset below, else skip
     dup_keyfield = False
     try:
-        dup_keyfield = conn.sadd(k, d[k])
-        if dup_keyfield == False:
-            logger.warning("{} field has duplicate value of {}".format(k, d[k]))
+        dup_keyfield = conn.sadd(k, v)
+        if dup_keyfield is False:
+            logger.warning("{} field has duplicate value of {}".format(k, v))
     except redis.RedisError as e:
         logger.error(e)
 
-    return dup_keyfield
+    return not dup_keyfield
 
 
-def addRedisHashMap(pipe, keyset, key, value):
+def add_redis_hashmap(pipe, keyset, key, value):
     try:
         pipe.hmset(keyset, {key: value})
     except redis.RedisError as e:
@@ -81,29 +81,33 @@ def to_dict(values):
         d[headers[i]] = values[i]
     return d
 
+def read_data(reader):
+    for row in reader:
+        yield row
 
 def convert_file(inputfile, keyfield, keyset):
     count = 0
-
     try:
         with open(inputfile) as f:
             csv.register_dialect('escaped', delimiter=",", escapechar="\\")
-            reader = csv.reader(f, skipinitialspace=True, dialect='escaped')
-            for line in reader:
-                count = count + 1
-                values = line
-                if count == 1:
-                    global headers
-                    headers = values
-                else:
-                    conn = _get_connection()
-                    pipe = conn.pipeline(False)
-                    hashkeyset = ''.join([keyset, str(count - 1)])
-                    valuesDict = to_dict(values)
-                    if (addRedisSetKey(conn, valuesDict, keyfield) == True):
-                        for key, value in valuesDict.items():
-                            addRedisHashMap(pipe, hashkeyset, key, value)
-                    pipe.execute()
+            reader = csv.DictReader(f, dialect='escaped')
+            conn = _get_connection()
+            pipe = conn.pipeline(False)
+
+            for row in read_data(reader):
+                valuesdict = {}
+                count += 1
+                hashkeyset = ''.join([keyset, str(count)])
+                for key, value in row.items():
+                    if key == keyfield:
+                        dupkeyfield = add_redis_set_key(conn, keyfield, value)
+                        if dupkeyfield is True:
+                            valuesdict.clear()
+                            break
+                    valuesdict[key] = value
+                for k, v in valuesdict.items():
+                    add_redis_hashmap(pipe, hashkeyset, k, v)
+            pipe.execute()
             f.close()
     except IOError as e:
         assert isinstance(e, object)
@@ -161,5 +165,5 @@ if __name__ == '__main__':
         usage()
         sys.exit(2)
 
-    getLogger(outputfile)
+    get_logger(outputfile)
     convert_file(inputfile, keyfield, keyset)
